@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>مترجم الأسماء — PWA</title>
+  <meta name="description" content="تطبيق PWA لتحويل أسماء عربية إلى إنجليزية بجودة عالية عبر شيت Excel" />
+  <meta name="theme-color" content="#0ea5a4" />
+
+  <!-- Tailwind CDN for quick styling (development/demo) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- SheetJS (xlsx) for Excel parsing & generation -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', Arial; }
+    /* small visual polish */
+    .glass { background: rgba(255,255,255,0.06); backdrop-filter: blur(6px); }
+  </style>
+</head>
+<body class="bg-gradient-to-b from-slate-900 to-slate-800 text-slate-100 min-h-screen">
+  <main class="max-w-5xl mx-auto p-6">
+    <header class="flex items-center gap-4 mb-6">
+      <div class="w-14 h-14 rounded-2xl bg-emerald-400 flex items-center justify-center text-slate-900 font-bold">A</div>
+      <div>
+        <h1 class="text-2xl font-semibold">مترجم الأسماء — PWA</h1>
+        <p class="text-sm text-slate-300">حمّل شيت Excel يحتوي على أسماء عربية وسنحوّلها إلى الإنجليزية بدقة واحترافية. يمكنك تشغيل التطبيق كـ PWA على الهاتف أو سطح المكتب.</p>
+      </div>
+    </header>
+
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="md:col-span-2 glass p-4 rounded-lg">
+        <h2 class="font-medium mb-2">1. حمّل ملف Excel</h2>
+        <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="block w-full mb-3" />
+        <div class="mb-3 text-sm text-slate-300">بعد التحميل سيُمكّنك اختيار العمود الذي يحتوي على الأسماء، ثم ترجمتها باستخدام الذكاء الصناعي أو النمط المحلي.</div>
+
+        <div class="mb-3">
+          <label class="block text-sm mb-1">اختر عمود الاسم (إذا كان معروفًا)</label>
+          <select id="columnSelect" class="w-full p-2 rounded bg-slate-800 border border-slate-700"></select>
+        </div>
+
+        <div class="mb-3">
+          <label class="block text-sm mb-1">مفتاح OpenAI API (اختياري للترجمة الاحترافية)</label>
+          <input id="apiKey" placeholder="ضع مفتاح API هنا (sk-...) — اختياري" class="w-full p-2 rounded bg-slate-800 border border-slate-700" />
+          <p class="text-xs text-slate-400 mt-1">إذا لم تُدخل مفتاحًا سنستخدم طريقة تحويل محلية بسيطة (جيدة للحالات البسيطة لكن ليست بنفس جودة الذكاء الصناعي).</p>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="previewBtn" class="px-4 py-2 rounded bg-emerald-500 text-slate-900 font-medium">معاينة البيانات</button>
+          <button id="translateBtn" class="px-4 py-2 rounded bg-cyan-500 text-slate-900 font-medium">ترجمة الأسماء (AI)</button>
+          <button id="localTransBtn" class="px-4 py-2 rounded bg-slate-600 text-slate-100">ترجمة محلية (بدون إنترنت)</button>
+        </div>
+
+        <div id="progress" class="mt-3 text-sm text-slate-300"></div>
+      </div>
+
+      <aside class="glass p-4 rounded-lg">
+        <h3 class="font-medium mb-2">خيارات التصدير</h3>
+        <div class="mb-2">
+          <label class="block text-sm mb-1">اسم الملف المصدر</label>
+          <input id="sourceName" class="w-full p-2 rounded bg-slate-800 border border-slate-700" placeholder="اسم الملف الأصلي (اختياري)" />
+        </div>
+        <div class="flex gap-2">
+          <button id="downloadExcel" class="flex-1 px-3 py-2 rounded bg-emerald-500 text-slate-900">تحميل Excel مترجم</button>
+        </div>
+
+        <hr class="my-3 border-slate-700" />
+        <div class="text-xs text-slate-300">تعليمات سريعة:</div>
+        <ol class="mt-2 text-sm text-slate-300 list-decimal list-inside">
+          <li>حمّل شيت Excel (xlsx/xls/csv).</li>
+          <li>اختر العمود الذي يحتوي الأسماء أو اتركه لاختيار تلقائي.</li>
+          <li>أدخل مفتاح OpenAI للحصول على ترجمة احترافية أو استخدم الترجمـة المحلية.</li>
+        </ol>
+      </aside>
+    </section>
+
+    <section class="glass p-4 rounded-lg mb-6">
+      <h2 class="font-medium mb-3">معاينة البيانات</h2>
+      <div id="previewArea" class="overflow-auto max-h-96"></div>
+    </section>
+
+    <footer class="text-xs text-slate-400 mt-4">يمكنك تثبيت التطبيق: افتح قائمة المستعرض → تثبيت التطبيق / Add to Home screen. يعمل كـ PWA دون خادم (بإمكانه الاتصال بالـ OpenAI إذا أضفت مفتاح API).</footer>
+  </main>
+
+  <!-- App logic: single-file PWA (manifest generated at runtime; service worker registered via blob) -->
+  <script>
+  (function(){
+    // --- Helpers ---
+    const $ = id => document.getElementById(id);
+    let workbook = null; // parsed workbook
+    let currentSheetName = null;
+    let rows = [];
+
+    function detectNameColumn(ws) {
+      // Simple heuristic: choose first column with many Arabic letters
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+      const counts = {};
+      for (let R = range.s.r; R <= Math.min(range.e.r, 200); ++R) {
+        for (let C = range.s.c; C <= Math.min(range.e.c, 20); ++C) {
+          const cell = ws[XLSX.utils.encode_cell({r:R,c:C})];
+          if (!cell) continue;
+          const v = String(cell.v||'');
+          if (!counts[C]) counts[C] = 0;
+          if (/[\u0600-\u06FF]/.test(v)) counts[C]++;
+        }
+      }
+      let bestCol = 0, bestVal = -1;
+      for (const c in counts) { if (counts[c]>bestVal) { bestVal=counts[c]; bestCol=parseInt(c);} }
+      return bestCol;
+    }
+
+    function readFile(file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const data = e.target.result;
+        try {
+          workbook = XLSX.read(data, {type: 'array'});
+          currentSheetName = workbook.SheetNames[0];
+          populateColumnSelector();
+          renderPreview();
+        } catch(err) {
+          alert('خطأ في قراءة الملف: '+err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function populateColumnSelector() {
+      const sel = $('columnSelect');
+      sel.innerHTML = '';
+      const ws = workbook.Sheets[currentSheetName];
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+      const detected = detectNameColumn(ws);
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const colLetter = XLSX.utils.encode_col(C);
+        const opt = document.createElement('option');
+        opt.value = C;
+        opt.textContent = colLetter;
+        if (C === detected) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+
+    function renderPreview() {
+      const preview = $('previewArea');
+      preview.innerHTML = '';
+      if (!workbook) { preview.textContent = 'لا يوجد ملف محمل بعد.'; return; }
+      const ws = workbook.Sheets[currentSheetName];
+      const data = XLSX.utils.sheet_to_json(ws, {header:1, defval: ''});
+      rows = data.slice(0, 1000); // keep
+      const table = document.createElement('table');
+      table.className = 'min-w-full text-sm';
+      rows.forEach((r, i) => {
+        const tr = document.createElement('tr');
+        tr.className = i%2? 'bg-slate-900/30' : '';
+        r.forEach(c => {
+          const td = document.createElement('td');
+          td.className = 'p-2 border border-slate-700';
+          td.textContent = c;
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      });
+      preview.appendChild(table);
+    }
+
+    // --- Local transliteration fallback (simple) ---
+    function localTransliterate(name) {
+      // Very simple rule-based transliteration + cleanup
+      // This is a fallback. Use OpenAI for best results.
+      let s = name.trim();
+      s = s.replace(/[^\u0600-\u06FF\s\-']/g, '');
+      const map = {
+        'ا':'a','أ':'a','إ':'i','آ':'a','ب':'b','ت':'t','ث':'th','ج':'g','ح':'h','خ':'kh',
+        'د':'d','ذ':'dh','ر':'r','ز':'z','س':'s','ش':'sh','ص':'s','ض':'d','ط':'t','ظ':'z',
+        'ع':'a','غ':'gh','ف':'f','ق':'q','ك':'k','ل':'l','م':'m','ن':'n','ه':'h','و':'w','ي':'y',
+        'ى':'a','ء':'','ئ':'y','ؤ':'w','ة':'a'
+      };
+      let out = '';
+      for (const ch of s) {
+        if (ch === ' ') out += ' ';
+        else out += map[ch] ?? '';
+      }
+      // cleanup duplicates and apply capitalization
+      out = out.replace(/\s+/g,' ').trim().split(' ').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+      return out || name;
+    }
+
+    // --- OpenAI-based translation ---
+    async function translateWithOpenAI(names, apiKey) {
+      // Batch the names to avoid huge prompts. Each request will ask the model to return a JSON array of translations in order.
+      // Note: user must supply their OpenAI key. This code calls the public OpenAI endpoint directly from the browser using the key. For production move key to a server.
+      const batchSize = 25; // safe small batches
+      const results = [];
+      for (let i=0;i<names.length;i+=batchSize) {
+        const batch = names.slice(i,i+batchSize);
+        const system = `أنت مترجم احترافي ومختص في تحويل الأسماء العربية إلى الإنجليزية: قم بتحويل كل اسم عربي إلى صيغة إنجليزية مناسبة (transliteration) مع المحافظة على قابلية النطق والاحترافية. إذا كان الاسم مركبًا عدّل الفواصل بحيث تكون أجزاء الاسم واضحة. أعِد النتيجة في صورة JSON على شكل مصفوفة من النصوص بالترتيب.`;
+        const userPrompt = `ترجم هذه الأسماء:
+${JSON.stringify(batch, null, 2)}
+
+قواعد:
+- أعطِ كل اسم ترجمة واحدة قصيرة، احترافية.
+- لا تضع أي شرح إضافي، فقط أعِد مصفوفة JSON من نفس الطول.
+- معالج الأخطاء: إذا لم يستطع النموذج ترجمة اسم اكتب نفس الاسم باللاتينية.`;
+
+        const body = {
+          model: 'gpt-4o-mini',
+          messages: [
+            {role:'system', content: system},
+            {role:'user', content: userPrompt}
+          ],
+          temperature: 0.2,
+          max_tokens: 1500
+        };
+
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
+          body: JSON.stringify(body)
+        });
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error('OpenAI API error: '+resp.status+" — "+txt);
+        }
+        const data = await resp.json();
+        // try to extract JSON from assistant content
+        const raw = data.choices?.[0]?.message?.content || '';
+        let parsed = null;
+        try {
+          parsed = JSON.parse(raw);
+        } catch(err) {
+          // try to extract JSON substring
+          const m = raw.match(/\[.*\]/s);
+          if (m) parsed = JSON.parse(m[0]);
+          else throw new Error('تعذر تحليل ناتج OpenAI: ' + raw.slice(0,200));
+        }
+        if (!Array.isArray(parsed)) throw new Error('رد OpenAI ليس مصفوفة: '+JSON.stringify(parsed).slice(0,200));
+        results.push(...parsed.map(x=>String(x)));
+        // small delay to be gentle
+        await new Promise(r=>setTimeout(r, 350));
+      }
+      return results;
+    }
+
+    // --- Main flow ---
+    $('fileInput').addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      readFile(f);
+    });
+
+    $('previewBtn').addEventListener('click', () => { renderPreview(); });
+
+    $('localTransBtn').addEventListener('click', async () => {
+      if (!workbook) return alert('الرجاء تحميل ملف أولاً');
+      const col = parseInt($('columnSelect').value || '0', 10);
+      const ws = workbook.Sheets[currentSheetName];
+      const data = XLSX.utils.sheet_to_json(ws, {header:1, defval: ''});
+      const names = data.map(r => r[col]||'');
+      $('progress').textContent = 'جاري الترجمة المحلية...';
+      const translated = names.map(n => n? localTransliterate(String(n)): '');
+      appendTranslationColumn(ws, translated);
+      renderPreview();
+      $('progress').textContent = 'اكتمل (ترجمة محلية).';
+    });
+
+    $('translateBtn').addEventListener('click', async () => {
+      if (!workbook) return alert('الرجاء تحميل ملف أولاً');
+      const apiKey = $('apiKey').value.trim();
+      if (!apiKey) return alert('أدخل مفتاح OpenAI أو استخدم الترجمـة المحلية.');
+      const col = parseInt($('columnSelect').value || '0', 10);
+      const ws = workbook.Sheets[currentSheetName];
+      const data = XLSX.utils.sheet_to_json(ws, {header:1, defval: ''});
+      const names = data.map(r => r[col]||'');
+      const toTranslate = names.map(n => n? String(n): '');
+      $('progress').textContent = `جاري إرسال ${toTranslate.filter(Boolean).length} اسم إلى OpenAI...`;
+      try {
+        const translated = await translateWithOpenAI(toTranslate.filter(Boolean), apiKey);
+        // merge back into rows: we filtered empties — need to map
+        let idx = 0;
+        const merged = toTranslate.map(v => v? translated[idx++] : '');
+        appendTranslationColumn(ws, merged);
+        renderPreview();
+        $('progress').textContent = 'اكتمل (OpenAI).';
+      } catch(err) {
+        $('progress').textContent = 'خطأ: '+err.message;
+        alert('حدث خطأ أثناء الترجمة: '+err.message);
+      }
+    });
+
+    function appendTranslationColumn(ws, translated) {
+      // find first empty column to the right
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+      const tgtCol = range.e.c + 1;
+      // Write header
+      const headerCell = XLSX.utils.encode_cell({r:0,c:tgtCol});
+      ws[headerCell] = {t:'s', v:'Name_en'};
+      for (let r=0;r<translated.length;r++) {
+        const cell = XLSX.utils.encode_cell({r:r+1,c:tgtCol});
+        ws[cell] = {t:'s', v: translated[r] || ''};
+      }
+      // update range
+      range.e.c = tgtCol;
+      ws['!ref'] = XLSX.utils.encode_range(range);
+    }
+
+    // --- Download translated workbook ---
+    $('downloadExcel').addEventListener('click', () => {
+      if (!workbook) return alert('لا يوجد ملف للتحميل.');
+      const wbout = XLSX.write(workbook, {bookType:'xlsx', type:'array'});
+      const blob = new Blob([wbout], {type: 'application/octet-stream'});
+      const filename = ($('sourceName').value.trim() || 'translated') + '.xlsx';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    // --- PWA manifest & service worker (single-file approach using blobs) ---
+    async function registerPWA() {
+      try {
+        // create manifest blob and link it
+        const manifest = {
+          name: 'مترجم الأسماء',
+          short_name: 'مترجم الأسماء',
+          start_url: '.',
+          display: 'standalone',
+          background_color: '#0f172a',
+          theme_color: '#0ea5a4',
+          icons: [
+            { src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><rect width="100%" height="100%" fill="%230ea5a4"/><text x="50%" y="55%" font-size="80" text-anchor="middle" fill="%23202222" font-family="sans-serif">A</text></svg>', sizes:'192x192', type:'image/svg+xml'}
+          ]
+        };
+        const mf = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+        const mfurl = URL.createObjectURL(mf);
+        let link = document.querySelector('link[rel="manifest"]');
+        if (!link) { link = document.createElement('link'); link.rel='manifest'; document.head.appendChild(link); }
+        link.href = mfurl;
+
+        // create service worker blob
+        const swCode = `self.addEventListener('install', e => { self.skipWaiting(); });
+        self.addEventListener('activate', e => { clients.claim(); });
+        self.addEventListener('fetch', event => { /* fallback: let network handle requests */ });`;
+        const swBlob = new Blob([swCode], {type:'application/javascript'});
+        const swUrl = URL.createObjectURL(swBlob);
+        if ('serviceWorker' in navigator) {
+          try {
+            await navigator.serviceWorker.register(swUrl);
+            console.log('Service worker registered');
+          } catch(err) {
+            console.warn('SW register failed', err);
+          }
+        }
+      } catch(err) { console.warn('PWA setup err', err); }
+    }
+
+    registerPWA();
+
+    // quick guidance if user closes without saving
+    window.addEventListener('beforeunload', (e) => {
+      // no message to avoid annoying prompt in modern browsers
+    });
+
+  })();
+  </script>
+
+</body>
+</html>
